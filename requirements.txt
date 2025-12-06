@@ -6,3 +6,4 @@ rasterio
 geopandas
 numpy
 shapely
+fiona
