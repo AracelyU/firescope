@@ -7,3 +7,4 @@ geopandas
 numpy
 shapely
 fiona
+pyarrow
