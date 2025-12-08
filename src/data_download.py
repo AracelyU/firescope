@@ -18,11 +18,15 @@ DEFAULT_GEE_PROJECT = "composed-augury-451119-b6" # Esto permite correr el scrip
 
 def init_gee():
     """
-    Función para inicializar Google Earth Engine
-    Prioridad de autenticación:
-    1. Variable de entorno (si el usuario configuró la suya)
-    2. Proyecto por defecto del equipo (compartido con el profesor y equipo)
-    3. Autenticación interactiva si falla lo anterior
+    Función para inicializar Google Earth Engine (GEE) 
+
+    Descripción: Configura la sesión de GEE intentando 3 métodos de autenticación en orden de prioridad:
+        1. Variable de entorno (si el usuario configuró la suya)
+        2. ID del proyecto por defecto del equipo (compartido con el profesor y equipo)
+        3. Autenticación interactiva (vía navegador) si falla lo anterior
+
+    Salida: 
+        No retorna valor (None), pero inicializa la sesión global de la librería ee (Google Earth Engine)
     """
     # 1. Intentar con variable de entorno
     project = os.environ.get('GOOGLE_CLOUD_PROJECT') or os.environ.get('EE_PROJECT')
@@ -59,7 +63,14 @@ def init_gee():
 def get_roi():
     """
     Función para retornar la geometría de la zona de estudio (Valdivia)
-    Se usa como región de recorte (clip) en las descargas desde GEE
+
+    Descripción: 
+        Genera un objeto geométrico de Earth Engine basado en las coordenadas 
+        definidas en VALDIVIA_BBOX. Usandose como región de recorte (clip) para
+        recortar las imágenes satelitales en las descargas desde GEE.
+
+    Salidas: 
+        ee.Geometry.Rectangle: Objeto geométrico que representa el bounding box de Valdivia
     """
     return ee.Geometry.Rectangle(VALDIVIA_BBOX) # Crea un rectángulo con las coordenadas de Valdivia [Oeste, Sur, Este, Norte]
 
@@ -73,13 +84,20 @@ def get_roi():
 def download_srtm():
     """
     Descarga datos de topología (SRTM) - Altura
-    Descarga el modelo digital de elevación SRTM (resolución 30 m)
+
+    Descripción:
+        Descarga el modelo digital de elevación SRTM (resolución 30 m)
+        Obtiene datos de topografía (elevación) del dataset SRTM (resolución 30m) 
+        desde Google Earth Engine, recortando la imagen a la zona de Valdivia y la exporta localmente.
+    
     Datos:
         - Origen: USGS/SRTMGL1_003
         - Formato de salida: .tif
-        - Región: Bounding box de Valdivia
+        - Ciudad: Bounding box de Valdivia
         - Resolución exportada: 30m (nativa)
-    Salida: data/raw/srtm_valdivia.tif 
+     
+    Salida: 
+        Archivo generado: data/raw/srtm_valdivia.tif 
     """
     print("\nIniciando descarga: SRTM (Topología)...")
     try:
@@ -96,7 +114,17 @@ def download_srtm():
         print(f"ERROR: Error descargando SRTM: {e}")
 
 def download_sentinel2():
-    """Descarga datos de vegetación (Sentinel-2) de verano con baja nubosidad."""
+    """
+    Descarga datos de vegetación (Sentinel-2) de verano con baja nubosidad.
+    
+    Descripción:
+        Busca imágenes de la colección Sentinel-2 para el verano de 2024, filtrando por baja 
+        nubosidad (<10%), seleccionando la imagen más limpia, recortando a la zona de interés 
+        y exportando las bandas B4, B8, B3 y B2.
+
+    Salida: 
+        Archivo generado: data/raw/sentinel2_valdivia.tif
+    """
     print("\nIniciando descarga: Sentinel-2 (Vegetación)...")
     try:
         roi = get_roi() # Obtengo la bounding box de recorte (de Valdivia)
@@ -124,7 +152,17 @@ def download_sentinel2():
         print(f"ERROR: Error descargando Sentinel-2: {e}")
 
 def download_era5():
-    """Descarga promedio mensual de viento ERA5-Land."""
+    """
+    Descarga promedio mensual de viento ERA5-Land.
+    
+    Descripción:
+        Obtiene datos horarios de ERA5-Land, calculando el promedio mensual de las componentes 
+        del viento (U y V) para el verano de 2024 a 10m de altura, y exporta el resultado 
+        con un reescalado a 1000 metros (1km).
+
+    Salida:
+        Archivo generado: 'data/raw/era5_wind_valdivia.tif'.
+    """
     print("\nIniciando descarga: ERA5 (Viento)...")
     try:
         roi = get_roi() # Obtengo la bounding box de recorte (de Valdivia)
@@ -146,8 +184,19 @@ def download_era5():
         print(f"EXITO: ERA5 (Viento) descargado en: {filename}")
     except Exception as e: # En caso de error, se muestra mensaje de fallo
         print(f"ERROR: Error descargando ERA5: {e}")
+
 def download_pangaea():
-    """Descarga datos históricos de incendios (Pangaea ZIP)."""
+    """
+    Descarga datos históricos de incendios (Pangaea ZIP).
+
+    Descripción:
+        Realiza una petición HTTP GET para descargar un archivo ZIP desde el repositorio 
+        de la página de Pangaea, el cual contiene shapefiles de cicatrices de incendios (FireScar) 
+        para la Región de Los Ríos. Y se descomprime el contenido automáticamente.
+    
+    Salida: 
+        Carpeta generada: data/raw/incendios_pangaea/ y su contenido descomprimido.
+    """
     print("\nIniciando descarga: Incendios Históricos (Pangaea)...")
     # URL directa del ZIP del dataset de Los Ríos (región actual de Valdivia)
     # en esta URL está el registro histórico de incendios para Los Ríos, por parte de la CONAF
@@ -167,8 +216,19 @@ def download_pangaea():
 
 def download_conaf():
     """
-    Descarga solo las subcarpetas de la Región 14 (Los Ríos) desde CONAF.
-    Para evitar descargar terabytes de datos de otras regiones
+    Descarga datos oficiales de amenaza y riesgo de CONAF.
+
+    Nota: Descarga solo las subcarpetas de la Región 14 (Los Ríos) 
+    desde CONAF. Para evitar descargar terabytes de datos de otras regiones
+
+    Descripción:
+        Utiliza la librería gdown para descargar carpetas específicas desde Google Drive 
+        que contienen rasters y shapefiles de la Región de Los Ríos (Región 14), evitando 
+        descargar el dataset nacional completo
+        Cabe destacar que este enlace Drive se obtuvo desde la página oficial de CONAF.
+
+    Salida: 
+        Carpetas generadas: data/raw/conaf_amenaza/ y data/raw/conaf_riesgo/ con su contenido.
     """
     print("\nIniciando descarga: CONAF (Solo Región 14 - Los Ríos)...")
     
@@ -227,6 +287,21 @@ def download_conaf():
 # Para descargar todos los datos a la vez: python src/data_download.py --sources all
 
 def main():
+    """
+    Orquestador principal del script de descarga (CLI).
+
+    Entradas:
+        Argumentos de línea de comandos (--sources) procesados mediante argparse.
+        Opciones disponibles: 'srtm', 'sentinel2', 'era5', 'pangaea', 'conaf', 'all'.
+    
+    Descripción:
+        Gestiona el flujo de descarga: crea directorios necesarios, inicializa GEE 
+        (solo si las fuentes solicitadas lo requieren) y ejecuta las funciones de 
+        descarga correspondientes según lo solicitado por el usuario.
+
+    Salida:
+        Mensajes de estado en consola y ejecución de funciones de descarga (según lo solicitado).
+    """
     # Asegurar que existe la carpeta
     if not os.path.exists(DATA_RAW_PATH): # Crea carpeta data/raw si no existe
         os.makedirs(DATA_RAW_PATH)
