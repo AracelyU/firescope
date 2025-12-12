@@ -338,7 +338,7 @@ def download_comuna_valdivia():
         1. Descarga ZIP desde Geoportal.
         2. Extrae el archivo 'DPA_2023'.
         3. Elimina el ZIP.
-        4. Entra a 'comunas/' dentro del paquete.
+        4. Entra a 'COMUNAS/' dentro del paquete.
         5. Filtra la comuna de Valdivia.
         6. Guarda el shapefile resultante en data/raw/comuna/comuna_valdivia.*
 
@@ -356,7 +356,7 @@ def download_comuna_valdivia():
     # --- 1. Configuración de rutas ---
     zip_url = "https://www.geoportal.cl/geoportal/catalog/download/912598ad-ac92-35f6-8045-098f214bd9c2"
     zip_path = os.path.join(DATA_RAW_PATH, "DPA_2023.zip")
-    extract_path = os.path.join(DATA_RAW_PATH, "DPA_2023")
+    comunas_path = os.path.join(DATA_RAW_PATH, "COMUNAS")
     output_dir = os.path.join(DATA_RAW_PATH, "comuna")
 
     # Crear carpeta comuna si no existe
@@ -399,8 +399,7 @@ def download_comuna_valdivia():
         return
 
     # --- 4. Obtener shapefile de comunas ---
-    comunas_path = os.path.join(extract_path, "comunas")
-
+    
     shp_file = os.path.join(comunas_path, "COMUNAS_v1.shp")
 
     if not os.path.exists(shp_file):
@@ -417,7 +416,7 @@ def download_comuna_valdivia():
     # --- 5. Filtrar comuna Valdivia ---
     print(" Filtrando comuna de Valdivia ...")
     # Los datasets oficiales usan nombres en mayúsculas
-    gdf_valdivia = gdf[gdf["NOM_COM"].str.upper() == "VALDIVIA"]
+    gdf_valdivia = gdf[gdf["COMUNA"].str.upper() == "VALDIVIA"]
 
     if gdf_valdivia.empty:
         print("ERROR: No se encontró la comuna de Valdivia en el shapefile.")
