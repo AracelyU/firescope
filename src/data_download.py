@@ -328,6 +328,114 @@ def download_pangaea():
     except Exception as e:
         print(f"\nERROR: Error en descarga Pangaea: {e}")
 
+
+def download_comuna_valdivia():
+    """
+    Descarga y procesa el shapefile oficial de comunas (Geoportal.cl),
+    extrayendo solamente la comuna de Valdivia.
+
+    Flujo:
+        1. Descarga ZIP desde Geoportal.
+        2. Extrae el archivo 'DPA_2023'.
+        3. Elimina el ZIP.
+        4. Entra a 'comunas/' dentro del paquete.
+        5. Filtra la comuna de Valdivia.
+        6. Guarda el shapefile resultante en data/raw/comuna/comuna_valdivia.*
+
+    Archivos generados:
+        data/raw/comuna/comuna_valdivia.shp (+ .dbf, .shx, .prj)
+    """
+
+    import requests
+    import zipfile
+    import shutil
+    import geopandas as gpd
+
+    print("\nIniciando descarga: Comunas (Geoportal.cl)...")
+
+    # --- 1. Configuración de rutas ---
+    zip_url = "https://www.geoportal.cl/geoportal/catalog/download/912598ad-ac92-35f6-8045-098f214bd9c2"
+    zip_path = os.path.join(DATA_RAW_PATH, "DPA_2023.zip")
+    extract_path = os.path.join(DATA_RAW_PATH, "DPA_2023")
+    output_dir = os.path.join(DATA_RAW_PATH, "comuna")
+
+    # Crear carpeta comuna si no existe
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # --- 2. Descargar ZIP ---
+    try:
+        print(" Descargando ZIP desde Geoportal.cl ...")
+        response = requests.get(zip_url, stream=True)
+
+        if response.status_code != 200:
+            print(f"ERROR: No se pudo descargar el archivo (status: {response.status_code})")
+            return
+
+        with open(zip_path, "wb") as f:
+            f.write(response.content)
+
+        print(" ZIP descargado correctamente.")
+
+    except Exception as e:
+        print(f"ERROR durante la descarga del ZIP: {e}")
+        return
+
+    # --- 3. Extraer contenido ---
+    try:
+        print(" Extrayendo DPA_2023.zip ...")
+
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall(DATA_RAW_PATH)
+
+        print(" ZIP extraído correctamente.")
+
+        # Eliminar ZIP
+        os.remove(zip_path)
+        print(" ZIP eliminado por limpieza.")
+
+    except Exception as e:
+        print(f"ERROR al extraer el ZIP: {e}")
+        return
+
+    # --- 4. Obtener shapefile de comunas ---
+    comunas_path = os.path.join(extract_path, "comunas")
+
+    shp_file = os.path.join(comunas_path, "COMUNAS_v1.shp")
+
+    if not os.path.exists(shp_file):
+        print("ERROR: No se encontró COMUNAS_v1.shp dentro de DPA_2023/comunas/")
+        return
+
+    print(" Leyendo COMUNAS_v1.shp ...")
+    try:
+        gdf = gpd.read_file(shp_file)
+    except Exception as e:
+        print(f"ERROR al leer el shapefile: {e}")
+        return
+
+    # --- 5. Filtrar comuna Valdivia ---
+    print(" Filtrando comuna de Valdivia ...")
+    # Los datasets oficiales usan nombres en mayúsculas
+    gdf_valdivia = gdf[gdf["NOM_COM"].str.upper() == "VALDIVIA"]
+
+    if gdf_valdivia.empty:
+        print("ERROR: No se encontró la comuna de Valdivia en el shapefile.")
+        return
+
+    # --- 6. Guardar shapefile resultante ---
+    output_shp = os.path.join(output_dir, "comuna_valdivia.shp")
+
+    try:
+        gdf_valdivia.to_file(output_shp)
+        print(f"EXITO: Shapefile de Valdivia guardado en: {output_shp}")
+    except Exception as e:
+        print(f"ERROR al guardar shapefile final: {e}")
+        return
+
+    print("Proceso de comuna Valdivia finalizado.")
+
+
 def download_conaf():
     """
     Descarga datos oficiales de amenaza y riesgo de CONAF.
@@ -428,7 +536,9 @@ def main():
         'sentinel2': download_sentinel2, # vegetación
         'era5': download_era5, # viento
         'pangaea': download_pangaea, # incendios
-        'conaf': download_conaf # amenaza y riesgo de incendios
+        'conaf': download_conaf, # amenaza y riesgo de incendios
+        'comuna': download_comuna_valdivia
+
     }
     # Argumento obligatorio --sources: para indicar desde que fuente se quiere descargar los datos
     parser.add_argument('--sources', nargs='+', required=True,
