@@ -8,3 +8,4 @@ numpy
 shapely
 fiona
 pyarrow
+moderngl
