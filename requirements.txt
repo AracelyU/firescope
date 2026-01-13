@@ -11,3 +11,4 @@ pyarrow
 moderngl
 esda
 libpysal
+streamlit
