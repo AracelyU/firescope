@@ -9,3 +9,5 @@ shapely
 fiona
 pyarrow
 moderngl
+esda
+libpysal
