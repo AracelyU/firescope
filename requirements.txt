@@ -12,3 +12,5 @@ moderngl
 esda
 libpysal
 streamlit
+imageio
+imageio[ffmpeg]

@@ -81,3 +81,11 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+col_left, col_right = st.columns([2, 1])
+
+with col_left:
+    st.video("outputs/maps/simulacion.mp4")
+
+with col_right:
+    st.markdown("### Parámetros de la simulación")
