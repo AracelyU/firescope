@@ -7,6 +7,9 @@ import sys                  # Funciones utilitarias del sistema
 import ee                   # Google Earth Engine API
 import geemap               # Librería que facilita exportar imágenes desde GEE (Google Earth Engine)
 import gdown                # Para descargar carpetas/archivos desde Google Drive
+import geopandas as gpd     # Para leer shapefile comunal y construir ROI por poligono
+import rasterio             # Para recortar rasters localmente
+from rasterio.mask import mask # Para aplicar recorte por poligono
 
 # --- CONFIGURACIÓN GLOBAL ---
 # Coordenadas de Valdivia, Región de Los Ríos (Bounding Box aproximado)
@@ -89,7 +92,30 @@ def get_roi():
     Salidas: 
         ee.Geometry.Rectangle: Objeto geométrico que representa el bounding box de Valdivia
     """
-    return ee.Geometry.Rectangle(VALDIVIA_BBOX) # Crea un rectángulo con las coordenadas de Valdivia [Oeste, Sur, Este, Norte]
+    return ee.Geometry.Rectangle(VALDIVIA_BBOX)
+
+def get_roi_comuna():
+    """
+    Retorna la geometria de la comuna de Valdivia como ROI (poligono).
+
+    Requiere que exista data/raw/comuna/comuna_valdivia.shp.
+    Si no existe, intenta descargarlo.
+    """
+    comuna_path = os.path.join(DATA_RAW_PATH, "comuna", "comuna_valdivia.shp")
+    if not os.path.exists(comuna_path):
+        print("No se encontro comuna_valdivia.shp. Intentando descargar...")
+        download_comuna_valdivia()
+    if not os.path.exists(comuna_path):
+        raise FileNotFoundError(f"No existe: {comuna_path}")
+
+    gdf = gpd.read_file(comuna_path)
+    if gdf.empty:
+        raise ValueError("El shapefile de comuna esta vacio.")
+    # Asegurar CRS en EPSG:4326 para GEE
+    gdf = gdf.to_crs("EPSG:4326")
+    geom = gdf.unary_union
+    geojson = geom.__geo_interface__
+    return ee.Geometry(geojson) # Crea un rectángulo con las coordenadas de Valdivia [Oeste, Sur, Este, Norte]
 
 # --- Función de respaldo para topología, vegetación y viento ---
 
@@ -123,6 +149,36 @@ def download_from_backup(filename):
             
     except Exception as e: # En caso de error en la descarga
         print(f"Error descargando respaldo de Drive: {e}")
+
+def clip_raster_to_comuna(src_path, dst_path):
+    """
+    Recorta un raster existente usando el poligono comunal y lo guarda en dst_path.
+    """
+    comuna_path = os.path.join(DATA_RAW_PATH, "comuna", "comuna_valdivia.shp")
+    if not os.path.exists(comuna_path):
+        print("No se encontro comuna_valdivia.shp. Intentando descargar...")
+        download_comuna_valdivia()
+    if not os.path.exists(comuna_path):
+        raise FileNotFoundError(f"No existe: {comuna_path}")
+
+    gdf = gpd.read_file(comuna_path)
+    if gdf.empty:
+        raise ValueError("El shapefile de comuna esta vacio.")
+
+    with rasterio.open(src_path) as src:
+        if gdf.crs != src.crs:
+            gdf = gdf.to_crs(src.crs)
+        geoms = [geom for geom in gdf.geometry if geom is not None]
+        out_img, out_transform = mask(src, geoms, crop=True)
+        out_meta = src.meta.copy()
+        out_meta.update({
+            "height": out_img.shape[1],
+            "width": out_img.shape[2],
+            "transform": out_transform,
+        })
+        with rasterio.open(dst_path, "w", **out_meta) as dst:
+            dst.write(out_img)
+    print(f"EXITO: Recorte comunal guardado en: {dst_path}")
 
 # --- FUNCIONES DE DESCARGA ---
 # - Altura (Topografía): SRTM (Valdivia)
@@ -173,6 +229,33 @@ def download_srtm():
         # Si GEE no está disponible, vamos directo al respaldo
         download_from_backup(target_file)
 
+def download_srtm_comuna():
+    """
+    Descarga SRTM usando el poligono de la comuna (comuna_valdivia.shp) como ROI.
+
+    Salida:
+        Archivo generado: data/raw/srtm_valdivia_comuna.tif
+    """
+    target_file = "srtm_valdivia_comuna.tif"
+
+    if GEE_AVAILABLE:
+        print("\nIniciando descarga: SRTM (Topologia) por comuna...")
+        try:
+            roi = get_roi_comuna()
+            image = ee.Image("USGS/SRTMGL1_003").clip(roi)
+            filename = os.path.join(DATA_RAW_PATH, target_file)
+            geemap.ee_export_image(image, filename=filename, scale=30, region=roi)
+            print(f"EXITO: SRTM (comuna) descargado en: {filename}")
+        except Exception as e:
+            print(f"ERROR en GEE: {e}. Intentando descarga de respaldo...")
+            download_from_backup(target_file)
+    else:
+        print("\nModo local: recortando srtm desde archivo original...")
+        source_file = os.path.join(DATA_RAW_PATH, "srtm_valdivia.tif")
+        if not os.path.exists(source_file):
+            download_srtm()
+        clip_raster_to_comuna(source_file, os.path.join(DATA_RAW_PATH, target_file))
+
 def download_sentinel2():
     """
     Descarga datos de vegetación (Sentinel-2) de verano con baja nubosidad.
@@ -220,6 +303,43 @@ def download_sentinel2():
     else:
         download_from_backup(target_file)
 
+def download_sentinel2_comuna():
+    """
+    Descarga Sentinel-2 usando el poligono de la comuna (comuna_valdivia.shp) como ROI.
+
+    Salida:
+        Archivo generado: data/raw/sentinel2_valdivia_comuna.tif
+    """
+    target_file = "sentinel2_valdivia_comuna.tif"
+
+    if GEE_AVAILABLE:
+        print("\nIniciando descarga: Sentinel-2 (Vegetacion) por comuna...")
+        try:
+            roi = get_roi_comuna()
+            collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                          .filterBounds(roi)
+                          .filterDate('2024-01-01', '2024-03-01')
+                          .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30)))
+            if collection.size().getInfo() == 0:
+                print("ADVERTENCIA: No se encontraron imagenes Sentinel-2. Usando respaldo...")
+                download_from_backup(target_file)
+                return
+            # Compuesto para cubrir toda la comuna
+            image = collection.median().clip(roi)
+            filename = os.path.join(DATA_RAW_PATH, target_file)
+            geemap.ee_export_image(image.select(['B4', 'B8', 'B3', 'B2']),
+                                   filename=filename, scale=60, region=roi)
+            print(f"EXITO: Sentinel-2 (comuna) descargado en: {filename}")
+        except Exception as e:
+            print(f"ERROR en GEE: {e}. Intentando descarga de respaldo...")
+            download_from_backup(target_file)
+    else:
+        print("\nModo local: recortando sentinel2 desde archivo original...")
+        source_file = os.path.join(DATA_RAW_PATH, "sentinel2_valdivia.tif")
+        if not os.path.exists(source_file):
+            download_sentinel2()
+        clip_raster_to_comuna(source_file, os.path.join(DATA_RAW_PATH, target_file))
+
 def download_era5():
     """
     Descarga promedio mensual de viento ERA5-Land.
@@ -261,6 +381,37 @@ def download_era5():
             download_from_backup(target_file)
     else:
         download_from_backup(target_file)
+
+def download_era5_comuna():
+    """
+    Descarga ERA5 usando el poligono de la comuna (comuna_valdivia.shp) como ROI.
+
+    Salida:
+        Archivo generado: data/raw/era5_wind_valdivia_comuna.tif
+    """
+    target_file = "era5_wind_valdivia_comuna.tif"
+
+    if GEE_AVAILABLE:
+        print("\nIniciando descarga: ERA5 (Viento) por comuna...")
+        try:
+            roi = get_roi_comuna()
+            collection = (ee.ImageCollection("ECMWF/ERA5_LAND/HOURLY")
+                          .filterBounds(roi)
+                          .filterDate('2024-01-01', '2024-02-01')
+                          .select(['u_component_of_wind_10m', 'v_component_of_wind_10m']))
+            image = collection.mean().clip(roi)
+            filename = os.path.join(DATA_RAW_PATH, target_file)
+            geemap.ee_export_image(image, filename=filename, scale=1000, region=roi)
+            print(f"EXITO: ERA5 (comuna) descargado en: {filename}")
+        except Exception as e:
+            print(f"ERROR en GEE: {e}. Intentando descarga de respaldo...")
+            download_from_backup(target_file)
+    else:
+        print("\nModo local: recortando era5 desde archivo original...")
+        source_file = os.path.join(DATA_RAW_PATH, "era5_wind_valdivia.tif")
+        if not os.path.exists(source_file):
+            download_era5()
+        clip_raster_to_comuna(source_file, os.path.join(DATA_RAW_PATH, target_file))
 
 def download_pangaea():
     """
@@ -532,12 +683,14 @@ def main():
     # Diccionario para asignar nombre a las funciones
     available_sources = {
         'srtm': download_srtm, # topología
+        'srtm_comuna': download_srtm_comuna, # topologia (poligono comuna)
         'sentinel2': download_sentinel2, # vegetación
+        'sentinel2_comuna': download_sentinel2_comuna, # vegetacion (poligono comuna)
         'era5': download_era5, # viento
+        'era5_comuna': download_era5_comuna, # viento (poligono comuna)
         'pangaea': download_pangaea, # incendios
         'conaf': download_conaf, # amenaza y riesgo de incendios
         'comuna': download_comuna_valdivia
-
     }
     # Argumento obligatorio --sources: para indicar desde que fuente se quiere descargar los datos
     parser.add_argument('--sources', nargs='+', required=True,
@@ -554,7 +707,7 @@ def main():
 
     # Inicializar GEE solo si es necesario (para srtm, sentinel, era5)
     # Se intentará inicializar GEE, si falla, se activará GEE_AVAILABLE = False
-    gee_needed = any(s in ['srtm', 'sentinel2', 'era5'] for s in sources_to_run)
+    gee_needed = any(s in ['srtm', 'sentinel2', 'era5', 'srtm_comuna', 'sentinel2_comuna', 'era5_comuna'] for s in sources_to_run)
     if gee_needed:
         init_gee()
 
