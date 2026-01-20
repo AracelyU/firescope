@@ -10,10 +10,10 @@ layout(std430, binding = 1) buffer EstadoSalida {
 };
 
 int indice_en(int x, int y){
-    return x + 32 * y;
+    return x + 521 * y;
 }
 int estado_en(int x, int y){
-    if(x < 0 || x > 31 || y < 0 || y > 31) return -1;
+    if(x < 0 || x > 483 || y < 0 || y > 520) return -1;
     return entrada[indice_en(x, y)];
 }
 

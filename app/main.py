@@ -36,13 +36,6 @@ with st.sidebar:
     st.image("https://registro.usach.cl/imagen/UsachP2.png", width=150)
     st.markdown("---")
 
-    st.markdown("### 📊 Navegación")
-    page = st.selectbox(
-        "Seleccione una sección:",
-        ["🏠 Inicio", "📊 Datos", "🗺️ Análisis Espacial", "📈 Resultados"]
-    )
-
-    st.markdown("---")
     st.markdown("### ℹ️ Información")
     st.info(
         """
@@ -53,22 +46,6 @@ with st.sidebar:
         USACH
         """
     )
-
-# Contenido principal según página seleccionada
-if page == "🏠 Inicio":
-    # inicio
-    print("inicio")
-
-elif page == "📊 Datos":
-    # datos
-    print("datos")
-
-elif page == "🗺️ Análisis Espacial":
-    # analisis
-    print("analisis espacial")
-
-elif page == "📈 Resultados":
-    print("resultados")
 
 # Footer
 st.markdown("---")
@@ -82,10 +59,3 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-col_left, col_right = st.columns([2, 1])
-
-with col_left:
-    st.video("outputs/maps/simulacion.mp4")
-
-with col_right:
-    st.markdown("### Parámetros de la simulación")
