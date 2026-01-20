@@ -15,3 +15,5 @@ streamlit
 imageio
 imageio[ffmpeg]
 plotly
+folium
+matplotlib
