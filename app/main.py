@@ -1,8 +1,9 @@
 """
 Aplicación web.
 """
-
+import pandas as pd
 import streamlit as st
+import plotly.express as px
 
 # Configuración de la página
 st.set_page_config(

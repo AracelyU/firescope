@@ -3,6 +3,8 @@ import numpy as np
 import rasterio
 import imageio
 import plotly.graph_objects as go
+import pandas as pd
+import plotly.express as px
 
 
 T = 200
@@ -108,6 +110,7 @@ with col_left:
         )
     )
 
+    st.subheader("Visualización del Incendio")
     st.plotly_chart(
         fig,
         width="stretch",
@@ -119,4 +122,28 @@ with col_left:
     )
 
 with col_right:
-    st.markdown("### Datos de la simulación")
+    st.subheader("Estadísticas de Propagación")
+    # Cargamos el CSV generado en el notebook 03
+    csv_path = "data/processed/stats_simulacion.csv"
+    
+    try:
+        df = pd.read_csv(csv_path)
+        
+        # Crear gráfico interactivo con Plotly (Requisito del PDF: Gráfico 2)
+        fig = px.line(df, x="Paso", y=["Area Quemada", "Fuego Activo"],
+                        title="Curva de Crecimiento del Incendio",
+                        labels={"value": "Celdas Afectadas", "variable": "Estado"},
+                        color_discrete_map={"Area Quemada": "gray", "Fuego Activo": "red"})
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Métricas clave (Extra points para el dashboard)
+        max_fuego = df["Fuego Activo"].max()
+        total_final = df["Area Quemada"].iloc[-1]
+        
+        m1, m2 = st.columns(2)
+        m1.metric("Pico Máximo de Fuego", f"{max_fuego} celdas")
+        m2.metric("Área Total Afectada", f"{total_final} celdas")
+        
+    except FileNotFoundError:
+        st.warning("⚠️ No se encontraron los datos estadísticos. Ejecuta el notebook 03 primero.")
