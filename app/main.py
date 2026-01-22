@@ -421,8 +421,6 @@ with st.sidebar:
     st.markdown("### Informacion")
     st.info(
         """
-        **Laboratorio Integrador**
-
         Geoinformatica 2025
 
         USACH

@@ -15,6 +15,18 @@ import plotly.graph_objects as go
 import pandas as pd
 import plotly.express as px
 
+with st.sidebar:
+    st.image("https://registro.usach.cl/imagen/UsachP2.png", width=150)
+    st.markdown("---")
+    st.markdown("### Informacion")
+    st.info(
+        """
+        Geoinformatica 2025
+
+        USACH
+        """
+    )
+
 
 T = 400
 down_sample = 3
