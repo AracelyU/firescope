@@ -16,17 +16,18 @@ import pandas as pd
 import plotly.express as px
 
 
-T = 200
+T = 400
+down_sample = 3
 
 @st.cache_data
 def cargar_simulacion():
     return np.array([
-        imageio.imread(f"outputs/maps/simulacion/{t}.png")[::4, ::4] for t in range(T) 
+        imageio.imread(f"outputs/maps/simulacion/{t}.png")[::down_sample, ::down_sample] for t in range(T) 
     ])
 
 @st.cache_data
 def cargar_topologia():
-    return rasterio.open("data/processed/topologia_processed.tif").read(1)[::4,::4]
+    return rasterio.open("data/processed/topologia_processed.tif").read(1)[::down_sample,::down_sample]
 
 @st.cache_data
 def obtener_bounds_topologia_4326():
@@ -88,8 +89,7 @@ topologia = cargar_topologia()
 WIDTH = 484
 HEIGHT = 521
 
-MIN_LON, MAX_LON = -71.8, -70.8
-MIN_LAT, MAX_LAT = -33.8, -32.8
+MIN_LON, MAX_LON, MIN_LAT, MAX_LAT = (-73.30, -73.16, -39.88, -39.75)
 
 lons = np.linspace(MIN_LON, MAX_LON, WIDTH)
 lats = np.linspace(MIN_LAT, MAX_LAT, HEIGHT)
