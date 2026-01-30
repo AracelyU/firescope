@@ -267,6 +267,13 @@ try:
         3: (255, 170, 85),
         4: (215, 48, 39),
     }
+    class_labels = {
+        0: "Muy bajo",
+        1: "Bajo",
+        2: "Medio",
+        3: "Alto",
+        4: "Muy alto",
+    }
     for cls, color in class_colors.items():
         mask_cls = (riesgo == cls)
         risk_rgb[mask_cls] = color
@@ -308,6 +315,80 @@ try:
 
     st.caption("Mapa: riesgo CONAF + area quemada (rojo)")
     components.html(m.get_root().render(), height=520)
+
+    # ---- Estadisticas de solapamiento simulacion vs riesgo CONAF ----
+    sim_bounds = obtener_bounds_topologia_4326()
+    sim_transform = from_bounds(*sim_bounds, w, h)
+
+    burn_float = burn_mask.astype("float32")
+    burn_on_risk = np.zeros_like(riesgo, dtype="float32")
+    reproject(
+        source=burn_float,
+        destination=burn_on_risk,
+        src_transform=sim_transform,
+        src_crs="EPSG:4326",
+        dst_transform=from_bounds(*comuna_bounds, risk_w, risk_h),
+        dst_crs="EPSG:4326",
+        src_nodata=0,
+        dst_nodata=0,
+        resampling=Resampling.nearest,
+    )
+    burn_on_risk = burn_on_risk > 0.5
+
+    valid_mask = (comuna_mask == 1)
+    total_cells = int(valid_mask.sum())
+    total_burn = int((burn_on_risk & valid_mask).sum())
+    total_burn_pct = (total_burn / max(total_cells, 1)) * 100.0
+
+    rows = []
+    for cls in range(0, 5):
+        cls_mask = (riesgo == cls) & valid_mask
+        cls_total = int(cls_mask.sum())
+        cls_burn = int((burn_on_risk & cls_mask).sum())
+        if total_burn == 0:
+            burn_pct = 0.0
+        else:
+            # Porcentaje dentro SOLO del area simulada
+            burn_pct = (cls_burn / total_burn) * 100.0
+        rows.append(
+            {
+                "Riesgo": f"{class_labels[cls]} ({cls})",
+                "Celdas en riesgo": cls_total,
+                "Celdas quemadas": cls_burn,
+                "% del area simulada": burn_pct,
+            }
+        )
+
+    df_riesgo = pd.DataFrame(rows)
+    st.subheader("Distribucion del area simulada por clase de riesgo CONAF")
+    m1, m2 = st.columns(2)
+    burn_risk_ge1 = int(
+        (burn_on_risk & valid_mask & (riesgo >= 1)).sum()
+    )
+    if total_burn == 0:
+        burn_risk_ge1_pct = 0.0
+    else:
+        burn_risk_ge1_pct = (burn_risk_ge1 / total_burn) * 100.0
+    m1.metric("Area simulada con riesgo >= 1", f"{burn_risk_ge1_pct:.2f}%")
+    m2.metric("Celdas simuladas", f"{total_burn} / {total_cells}")
+
+    fig_risk = px.bar(
+        df_riesgo,
+        x="Riesgo",
+        y="% del area simulada",
+        text=df_riesgo["% del area simulada"].map(lambda v: f"{v:.1f}%"),
+        color="Riesgo",
+        color_discrete_sequence=[
+            "#c8c8c8",
+            "#b5d9a8",
+            "#ffebaa",
+            "#ffaa55",
+            "#d73027",
+        ],
+        labels={"% del area simulada": "Porcentaje del area simulada"},
+    )
+    fig_risk.update_layout(showlegend=False, yaxis_range=[0, 100])
+    st.plotly_chart(fig_risk, use_container_width=True)
 
 except FileNotFoundError as exc:
     st.warning(str(exc))
